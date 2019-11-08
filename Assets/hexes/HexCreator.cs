@@ -17,8 +17,16 @@
         Vector2 size;
         GameObject gameObject;
         Hex hex;
-        Vector3[] g_centers = new Vector3[0];
+        Vector3[][] cents;
+        Vector2Int ah;     // Active hex coordinates
         
+        public HexCreator()
+        {
+            a = 1f;
+            b = Mathf.Sin(Mathf.PI/3);
+            c = 0.5f;
+        }
+
         [MenuItem("Tools/Hexes")]
         static void Init()
         {
@@ -27,11 +35,86 @@
             t.gameObject.AddComponent<Hex>();
         }
 
-        public HexCreator()
+        protected virtual void OnSceneGUI()
         {
-            a = 1f;
-            b = Mathf.Sin(Mathf.PI/3);
-            c = 0.5f;
+            if(hex == null) hex = target as Hex;
+            Handles.color = Color.black;
+            Handles.DrawPolyLine(new Vector3(-0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y), new Vector3(0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y), new Vector3(0.5f*hex.gridSize.x, 0, -0.5f*hex.gridSize.y), new Vector3(-0.5f*hex.gridSize.x, 0, -0.5f*hex.gridSize.y), new Vector3(-0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y));
+            cents = GetHexCenters(hex.transform.position);
+            var e = Event.current;
+            if(e.type == EventType.KeyDown) {
+                switch(e.keyCode) {
+                    case KeyCode.W:
+                        if(ah.x < this.cents.Length-1) {
+                            ah.x += 1;
+                            if(this.cents[ah.x].Length <= ah.y)
+                                ah.y = this.cents[ah.x].Length-1;
+                        }
+                        break;
+                    case KeyCode.S:
+                        if(ah.x>0) {
+                            ah.x -= 1;
+                            if(this.cents[ah.x].Length <= ah.y)
+                                ah.y = this.cents[ah.x].Length-1;
+                        }
+                        break;
+                    case KeyCode.D:
+                        if(ah.y < this.cents[ah.x].Length-1)
+                            ah.y += 1;
+                        break;
+                    case KeyCode.A:
+                        if(ah.y>0)
+                            ah.y -= 1;
+                        break;
+                    case KeyCode.Space:
+                        AddHexToMesh(cents[ah.x][ah.y]);
+                        break;
+                }
+                SceneView.RepaintAll();
+            }
+            for(int i=0; i<cents.Length; i++) {
+                for(int j=0; j<cents[i].Length; j++) {
+                    if(i==ah.x && j==ah.y) {
+                        Handles.color = Color.green;
+                        Handles.SphereHandleCap(0, cents[i][j], Quaternion.identity, 0.2f, EventType.Repaint);
+                        Handles.DrawPolyLine(GetHexPoly(cents[i][j]));
+                        Handles.color = Color.black;
+                    }
+                    else {
+                        Handles.SphereHandleCap(0, cents[i][j], Quaternion.identity, 0.2f, EventType.Repaint);
+                        Handles.DrawPolyLine(GetHexPoly(cents[i][j]));
+                    }
+                }
+            }
+            // Handles.BeginGUI();
+            // if(GUILayout.Button("Refresh"))
+            //     Refresh();
+            // if(GUILayout.Button("Create mesh"))
+            //     CreateMesh();
+            // Handles.EndGUI();
+        }
+
+        void AddHexToMesh(Vector3 center)
+        {
+            List<Vector3> verts = new List<Vector3>(hex.vertices);
+            List<int> tris = new List<int>(hex.triangles);
+            var v2 = CreateVerts(center);
+            var t2 = GetTris(v2, verts.Count);
+            verts.AddRange(v2);
+            tris.AddRange(t2);
+        
+            meshFilter = hex.GetComponent<MeshFilter>();
+            if(meshFilter == null)
+                meshFilter = hex.gameObject.AddComponent<MeshFilter>();
+            var mr = hex.GetComponent<MeshRenderer>();
+            if(mr == null)
+                mr = hex.gameObject.AddComponent<MeshRenderer>();
+            mr.material = hex.material;
+            meshFilter.mesh = mesh = new Mesh();
+            mesh.name = "Hex";
+            mesh.vertices = hex.vertices = verts.ToArray();
+            mesh.triangles = hex.triangles = tris.ToArray();
+            mesh.RecalculateNormals();
         }
 
         Vector3[] GetHexPoly(Vector3 center)
@@ -47,45 +130,30 @@
             return v;
         }
 
-        Vector3[] GetHexCenters()
+        Vector3[][] GetHexCenters(Vector3 center)
         {
-            var xn = hex.gridSize.x/(4*b);
+            int xn = (int)(hex.gridSize.x/(4*b));
             var xs = xn*2*b;
             xn = 2*xn+1;
-            var yn = hex.gridSize.y/(3*a);
-            var ys = -1*yn*1.5f*b;
+            var yn = (int)(hex.gridSize.y/(3*a));
+            var ys = -1*yn*1.5f*a;
             var x_out = yn%2==1;
-            xs = x_out ? -1*(xs-b) : -1*xs;
+            xs = x_out ? -1*(xs+b) : -1*xs;
             yn = 2*yn + 1;
+            var c = new Vector3[yn][];
             List<Vector3> centers = new List<Vector3>();
             for(int i=0; i<yn; i++) {
-                for(int j=0; j<(x_out?xn+1:xn); j++)
-                    centers.Add(new Vector3(xs+b*2*j, 0, ys+a*1.5f*i));
+                var n = x_out?xn+1:xn;
+                c[i] = new Vector3[n];
+                for(int j=0; j<n; j++)
+                    c[i][j] = new Vector3(xs+b*2*j, 0, ys+a*1.5f*i);
+                // for(int j=0; j<(x_out?xn+1:xn); j++)
+                //     centers.Add(new Vector3(xs+b*2*j, 0, ys+a*1.5f*i));
                 x_out = !x_out;
                 xs = x_out ? xs-b : xs+b;
             }
-            return centers.ToArray();
-        }
-
-        protected virtual void OnSceneGUI()
-        {
-            if(hex == null) hex = target as Hex;
-            Handles.color = Color.black;
-            Handles.Label(Vector3.zero, "hello there");
-            Handles.DrawPolyLine(hex.vertices);
-            Handles.DrawPolyLine(new Vector3(-0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y), new Vector3(0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y), new Vector3(0.5f*hex.gridSize.x, 0, -0.5f*hex.gridSize.y), new Vector3(-0.5f*hex.gridSize.x, 0, -0.5f*hex.gridSize.y), new Vector3(-0.5f*hex.gridSize.x, 0, 0.5f*hex.gridSize.y));
-            var c = GetHexCenters();
-            Handles.Label(c[0], c[0].x.ToString() + "," + c[0].z.ToString());
-            for(int i=0; i<c.Length; i++) {
-                Handles.DrawPolyLine(GetHexPoly(c[i]));
-            }
-
-            Handles.BeginGUI();
-            if(GUILayout.Button("Refresh"))
-                Refresh();
-            if(GUILayout.Button("Create mesh"))
-                CreateMesh();
-            Handles.EndGUI();
+            return c;
+            // return centers.ToArray();
         }
 
         void Refresh()
@@ -99,7 +167,7 @@
             if(hex == null) hex = target as Hex;
             var vertices = new List<Vector3>();
             var triangles = new List<int>();
-            var center = Vector3.zero;
+            var center = hex.transform.position;
 
             var v1 = CreateVerts(center);
             var t1 = GetTris(v1);
