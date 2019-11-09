@@ -9,5 +9,6 @@ namespace hexes
         public int[] triangles;
         public Material material;
         public Vector2 gridSize;
+        public Mesh mesh;
     }
 }

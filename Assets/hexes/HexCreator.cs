@@ -3,19 +3,17 @@
     using UnityEngine;
     using UnityEditor;
     using System.Collections.Generic;
+    using System.IO;
+    using UnityEditor.Formats.Fbx.Exporter;
+    using Autodesk.Fbx;
     
     // [ExecuteInEditMode]
     [CustomEditor(typeof(Hex))]
     public class HexCreator : Editor
     {
-        MeshFilter meshFilter;
-        Mesh mesh;
-        Material material;
         float a;
         float b;
         float c;
-        Vector2 size;
-        GameObject gameObject;
         Hex hex;
         Vector3[][] cents;
         Vector2Int ah;     // Active hex coordinates
@@ -30,9 +28,13 @@
         [MenuItem("Tools/Hexes")]
         static void Init()
         {
-            var t = (new GameObject("Hex"));
-            t.transform.position = Vector3.zero;
-            t.gameObject.AddComponent<Hex>();
+            var g = (new GameObject("Hex"));
+            g.transform.position = Vector3.zero;
+            var h = g.AddComponent<Hex>();
+            var mf = g.AddComponent<MeshFilter>();
+            h.mesh = mf.mesh = new Mesh();
+            // g.AddComponent<MeshRenderer>().material = h.material;
+            g.AddComponent<MeshRenderer>().material = Resources.Load<Material>("Materials/Default-Diffuse");
         }
 
         protected virtual void OnSceneGUI()
@@ -86,12 +88,16 @@
                     }
                 }
             }
-            // Handles.BeginGUI();
-            // if(GUILayout.Button("Refresh"))
-            //     Refresh();
-            // if(GUILayout.Button("Create mesh"))
-            //     CreateMesh();
-            // Handles.EndGUI();
+            GUILayout.BeginArea(new Rect(0, 0, 80, Screen.height));
+            Handles.BeginGUI();
+            if(GUILayout.Button("Refresh"))
+                Refresh();
+            if(GUILayout.Button("Save Mesh"))
+                SaveMesh();
+            if(GUILayout.Button("Load Mesh"))
+                Load();
+            Handles.EndGUI();
+            GUILayout.EndArea();
         }
 
         void AddHexToMesh(Vector3 center)
@@ -102,15 +108,7 @@
             var t2 = GetTris(v2, verts.Count);
             verts.AddRange(v2);
             tris.AddRange(t2);
-        
-            meshFilter = hex.GetComponent<MeshFilter>();
-            if(meshFilter == null)
-                meshFilter = hex.gameObject.AddComponent<MeshFilter>();
-            var mr = hex.GetComponent<MeshRenderer>();
-            if(mr == null)
-                mr = hex.gameObject.AddComponent<MeshRenderer>();
-            mr.material = hex.material;
-            meshFilter.mesh = mesh = new Mesh();
+            var mesh = hex.mesh;
             mesh.name = "Hex";
             mesh.vertices = hex.vertices = verts.ToArray();
             mesh.triangles = hex.triangles = tris.ToArray();
@@ -147,59 +145,36 @@
                 c[i] = new Vector3[n];
                 for(int j=0; j<n; j++)
                     c[i][j] = new Vector3(xs+b*2*j, 0, ys+a*1.5f*i);
-                // for(int j=0; j<(x_out?xn+1:xn); j++)
-                //     centers.Add(new Vector3(xs+b*2*j, 0, ys+a*1.5f*i));
                 x_out = !x_out;
                 xs = x_out ? xs-b : xs+b;
             }
             return c;
-            // return centers.ToArray();
+        }
+
+        void SaveMesh()
+        {
+            string dir = "./Assets/Resources/Hexes";
+            Directory.CreateDirectory(dir);
+            ModelExporter.ExportObject(dir+"/"+hex.name+".fbx", hex);
+            var g2 = Instantiate<GameObject>(Resources.Load<GameObject>("Hexes/"+hex.name));
+            var h2 = g2.AddComponent<Hex>();
+            h2.name = hex.name;
+            h2.triangles = hex.triangles;
+            h2.vertices = hex.vertices;
+            h2.gridSize = hex.gridSize;
+            PrefabUtility.SaveAsPrefabAsset(g2, Path.GetFullPath(dir+"/"+hex.name+".prefab"));
+            DestroyImmediate(g2);
+        }
+
+        void Load()
+        {
+            var g = Instantiate<GameObject>(Resources.Load<GameObject>("Hexes/Hex"));
         }
 
         void Refresh()
         {
             Debug.Log("refresh");
-            Debug.Log(target.name);
-        }
-
-        void CreateMesh()
-        {
-            if(hex == null) hex = target as Hex;
-            var vertices = new List<Vector3>();
-            var triangles = new List<int>();
-            var center = hex.transform.position;
-
-            var v1 = CreateVerts(center);
-            var t1 = GetTris(v1);
-            vertices.AddRange(v1);
-            triangles.AddRange(t1);
-
-            var v2 = CreateVerts(new Vector3(center.x-b, center.y, center.z+a+c));
-            var t2 = GetTris(v2, vertices.Count);
-            vertices.AddRange(v2);
-            triangles.AddRange(t2);
-
-            var v3 = CreateVerts(new Vector3(center.x+b, center.y, center.z+a+c));
-            var t3 = GetTris(v3, vertices.Count);
-            vertices.AddRange(v3);
-            triangles.AddRange(t3);
-
-            GameObject g = hex.gameObject;
-            g.transform.position = center;
-            meshFilter = g.GetComponent<MeshFilter>();
-            if(meshFilter == null)
-                meshFilter = g.AddComponent<MeshFilter>();
-            var mr = g.GetComponent<MeshRenderer>();
-            if(mr == null)
-                mr = g.AddComponent<MeshRenderer>();
-            mr.material = hex.material;
-            meshFilter.mesh = mesh = new Mesh();
-            mesh.name = "Hex";
-            mesh.vertices = vertices.ToArray();
-            mesh.triangles = triangles.ToArray();
-            mesh.RecalculateNormals();
-            hex.triangles = triangles.ToArray();
-            hex.vertices = vertices.ToArray();
+            hex.mesh = hex.GetComponent<MeshFilter>().mesh;
         }
 
         int[] GetTris(Vector3[] verts, int n = 0)
